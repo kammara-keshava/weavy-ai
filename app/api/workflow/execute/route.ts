@@ -1,9 +1,10 @@
-export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import { WorkflowExecutor } from '@/lib/workflow-execution';
 import { z } from 'zod';
+
+export const dynamic = 'force-dynamic';
 
 const executeWorkflowSchema = z.object({
   nodeIds: z.array(z.string()),
