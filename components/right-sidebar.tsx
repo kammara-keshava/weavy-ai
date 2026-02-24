@@ -26,12 +26,14 @@ export function RightSidebar() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [nodeExecutions, setNodeExecutions] = useState<Record<string, NodeExecution[]>>({});
 
-  useEffect(() => {
+    useEffect(() => {
     const fetchRuns = async () => {
       try {
         const response = await fetch('/api/workflow/history');
+        console.log('[RightSidebar] /api/workflow/history response status:', response.status);
         if (response.ok) {
           const data = await response.json();
+          console.log('[RightSidebar] history response data:', data);
           setRuns(
             data.map((run: any) => ({
               id: run.id,
@@ -58,6 +60,7 @@ export function RightSidebar() {
           setRuns([]);
         }
       } catch {
+        console.error('[RightSidebar] failed to fetch runs');
         setRuns([]);
         setNodeExecutions({});
       }

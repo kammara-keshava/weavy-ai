@@ -11,11 +11,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    console.log('[History API] Clerk userId from auth:', userId);
+
     let user;
     try {
       user = await prisma.user.findUnique({
         where: { clerkId: userId },
       });
+      console.log('[History API] prisma.user.findUnique result:', user ? { id: user.id, clerkId: user.clerkId } : null);
     } catch (dbError) {
       console.error("Database error finding user:", dbError);
       return NextResponse.json([], { status: 200 });
@@ -35,6 +38,7 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
+      console.log('[History API] fetched runs count for user', user.id, ':', runs.length);
     } catch (dbError) {
       console.error("Database error fetching history:", dbError);
       return NextResponse.json([], { status: 200 });
