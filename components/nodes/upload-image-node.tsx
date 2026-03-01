@@ -16,7 +16,6 @@ export function UploadImageNode({ id, data }: NodeProps<NodeData>) {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // Validate file type
       const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
       if (!validTypes.includes(file.type)) {
         alert('Invalid file type. Please upload jpg, jpeg, png, webp, or gif.');
@@ -25,20 +24,28 @@ export function UploadImageNode({ id, data }: NodeProps<NodeData>) {
 
       setUploading(true);
       try {
-        // TODO: Implement Transloadit upload
-        // For now, create a local preview
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          updateNodeData(id, {
-            imageUrl: result,
-            fileName: file.name,
-          });
-          setUploading(false);
-        };
-        reader.readAsDataURL(file);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/upload/image', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Upload failed');
+        }
+
+        const result = await response.json();
+        updateNodeData(id, {
+          imageUrl: result.url,
+          fileName: result.fileName,
+        });
       } catch (error) {
         console.error('Upload error:', error);
+        alert(error instanceof Error ? error.message : 'Upload failed. Try again.');
+      } finally {
         setUploading(false);
       }
     },
@@ -74,7 +81,6 @@ export function UploadImageNode({ id, data }: NodeProps<NodeData>) {
 
         {data.imageUrl && !uploading && (
           <div className="mt-2">
-            {/* eslint-disable-next-line @next/next/no-img-element -- dynamic data URL from upload */}
             <img
               src={data.imageUrl}
               alt="Uploaded"
@@ -90,3 +96,4 @@ export function UploadImageNode({ id, data }: NodeProps<NodeData>) {
     </BaseNode>
   );
 }
+

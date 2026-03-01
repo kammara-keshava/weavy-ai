@@ -11,6 +11,48 @@ export class WorkflowExecutor {
   }
 
   /**
+   * Trigger a Trigger.dev task via HTTP API
+   */
+  private async triggerTask(
+    taskId: string,
+    payload: Record<string, any>
+  ): Promise<Record<string, any>> {
+    const apiKey = process.env.TRIGGER_API_KEY;
+    if (!apiKey) {
+      throw new Error('TRIGGER_API_KEY environment variable is not set');
+    }
+
+    try {
+      const response = await fetch('https://api.trigger.dev/api/v1/tasks/trigger', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          id: taskId,
+          payload: payload,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          `Trigger.dev task failed: ${error.message || response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+      return result.output || result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Trigger.dev API error: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get all nodes that a given node depends on (upstream dependencies)
    */
   private getDependencies(nodeId: string): string[] {
@@ -133,7 +175,7 @@ export class WorkflowExecutor {
           nodeId,
           status: 'failed',
           inputs: this.getNodeInputs(node),
-          error: error.message,
+          error: error.message || 'Unknown error',
         });
         executed.add(nodeId);
       }
@@ -153,7 +195,7 @@ export class WorkflowExecutor {
   }
 
   /**
-   * Execute a single node
+   * Execute a single node using Trigger.dev for heavy tasks
    */
   private async executeNode(
     node: WorkflowNode,
@@ -170,62 +212,61 @@ export class WorkflowExecutor {
         case 'text':
           outputs = { output: node.data.text || '' };
           break;
+
         case 'uploadImage':
           outputs = { output: node.data.imageUrl || '' };
           break;
+
         case 'uploadVideo':
           outputs = { output: node.data.videoUrl || '' };
           break;
+
         case 'llm':
-          const llmResponse = await fetch('/api/workflow/execute-llm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nodeId: node.id,
-              model: 'gemini-1.5-flash-latest',
-              systemPrompt: inputs.systemPrompt,
-              userMessage: inputs.userMessage,
-              images: inputs.images || [],
-            }),
+          const llmResult = await this.triggerTask('execute-llm', {
+            nodeId: node.id,
+            model: 'gemini-1.5-flash-latest',
+            systemPrompt: inputs.systemPrompt,
+            userMessage: inputs.userMessage,
+            images: inputs.images || [],
           });
-          if (!llmResponse.ok) throw new Error('LLM execution failed');
-          const llmResult = await llmResponse.json();
+
+          if (!llmResult || typeof llmResult !== 'object' || !('output' in llmResult)) {
+            throw new Error('LLM task returned invalid result');
+          }
           outputs = { output: llmResult.output };
           break;
+
         case 'cropImage':
-          const cropResponse = await fetch('/api/workflow/execute-crop-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nodeId: node.id,
-              image_url: inputs.image_url,
-              x_percent: inputs.x_percent || 0,
-              y_percent: inputs.y_percent || 0,
-              width_percent: inputs.width_percent || 100,
-              height_percent: inputs.height_percent || 100,
-            }),
+          const cropResult = await this.triggerTask('execute-crop-image', {
+            nodeId: node.id,
+            image_url: inputs.image_url,
+            x_percent: inputs.x_percent || 0,
+            y_percent: inputs.y_percent || 0,
+            width_percent: inputs.width_percent || 100,
+            height_percent: inputs.height_percent || 100,
           });
-          if (!cropResponse.ok) throw new Error('Crop image execution failed');
-          const cropResult = await cropResponse.json();
+
+          if (!cropResult || typeof cropResult !== 'object' || !('output' in cropResult)) {
+            throw new Error('Crop image task returned invalid result');
+          }
           outputs = { output: cropResult.output };
           break;
+
         case 'extractFrame':
-          const frameResponse = await fetch('/api/workflow/execute-extract-frame', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nodeId: node.id,
-              video_url: inputs.video_url,
-              timestamp: inputs.timestamp || 0,
-            }),
+          const frameResult = await this.triggerTask('execute-extract-frame', {
+            nodeId: node.id,
+            video_url: inputs.video_url,
+            timestamp: inputs.timestamp || 0,
           });
-          if (!frameResponse.ok) throw new Error('Extract frame execution failed');
-          const frameResult = await frameResponse.json();
+
+          if (!frameResult || typeof frameResult !== 'object' || !('output' in frameResult)) {
+            throw new Error('Extract frame task returned invalid result');
+          }
           outputs = { output: frameResult.output };
           break;
       }
     } catch (e: any) {
-      error = e.message;
+      error = e.message || 'Unknown error during node execution';
     }
 
     const duration = Date.now() - startTime;
@@ -291,3 +332,4 @@ export class WorkflowExecutor {
     return 'partial';
   }
 }
+

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = executeWorkflowSchema.parse(body);
 
-    // Get user
+    // Get or create user
     let user = await prisma.user.findUnique({
       where: { clerkId: userId },
     });
@@ -31,15 +31,24 @@ export async function POST(request: NextRequest) {
       user = await prisma.user.create({
         data: {
           clerkId: userId,
-          email: '', // TODO: Get from Clerk
+          email: '',
         },
       });
     }
 
-    // Get workflow nodes and edges
-    // TODO: Load from database if workflowId provided, otherwise use current state
-    const nodes: any[] = validated.nodeIds.map((id) => ({ id, data: {} }));
-    const edges: any[] = [];
+    // Get workflow nodes and edges from database or request
+    const workflow = validated.workflowId
+      ? await prisma.workflow.findUnique({
+          where: { id: validated.workflowId, userId: user.id },
+        })
+      : null;
+
+    const workflowData = workflow
+      ? (workflow.data as any)
+      : { nodes: [], edges: [] };
+
+    const nodes = workflowData?.nodes || [];
+    const edges = workflowData?.edges || [];
 
     const executor = new WorkflowExecutor(nodes, edges);
     const result = await executor.execute(validated.nodeIds, validated.type);
@@ -56,10 +65,10 @@ export async function POST(request: NextRequest) {
         nodes: {
           create: result.nodeResults.map((nr) => ({
             nodeId: nr.nodeId,
-            nodeType: '', // TODO: Get from node
+            nodeType: (nodes as any[]).find((n: any) => n.id === nr.nodeId)?.data?.type || 'unknown',
             status: nr.status,
-            inputs: nr.inputs,
-            outputs: nr.outputs,
+            inputs: nr.inputs as any,
+            outputs: nr.outputs as any,
             error: nr.error,
             duration: nr.duration,
           })),
@@ -70,9 +79,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...result, runId: run.id });
   } catch (error) {
     console.error('Workflow execution error:', error);
-    return NextResponse.json(
-      { error: 'Failed to execute workflow' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Failed to execute workflow';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

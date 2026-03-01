@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
         user = await prisma.user.create({
           data: {
             clerkId: userId,
-            email: '', // TODO: Get from Clerk
+            email: '',
           },
         });
         console.log(`[Workflow Save] User created: ${user.id}`);
